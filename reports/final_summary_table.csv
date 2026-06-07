@@ -1,0 +1,13 @@
+Target,Best Model,Best ROC-AUC,RF ROC-AUC,XGBoost ROC-AUC,LogReg ROC-AUC
+NR-AR,Random Forest,0.816,0.816,0.805,0.771
+NR-AR-LBD,Random Forest,0.873,0.873,0.86,0.856
+NR-AhR,Random Forest,0.891,0.891,0.883,0.859
+NR-Aromatase,Random Forest,0.825,0.825,0.813,0.778
+NR-ER,Random Forest,0.731,0.731,0.718,0.68
+NR-ER-LBD,Random Forest,0.807,0.807,0.795,0.776
+NR-PPAR-gamma,Random Forest,0.83,0.83,0.801,0.784
+SR-ARE,Random Forest,0.81,0.81,0.789,0.762
+SR-ATAD5,Random Forest,0.858,0.858,0.832,0.811
+SR-HSE,Random Forest,0.776,0.776,0.759,0.716
+SR-MMP,XGBoost,0.87,0.87,0.87,0.852
+SR-p53,Random Forest,0.844,0.844,0.828,0.782

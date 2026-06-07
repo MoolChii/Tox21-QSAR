@@ -1,0 +1,37 @@
+Target,Model,ROC-AUC
+NR-AR,Random Forest (tuned),0.816
+NR-AR,XGBoost (tuned),0.805
+NR-AR,Logistic Reg (CV),0.771
+NR-AR-LBD,Random Forest (tuned),0.873
+NR-AR-LBD,XGBoost (tuned),0.86
+NR-AR-LBD,Logistic Reg (CV),0.856
+NR-AhR,Random Forest (tuned),0.891
+NR-AhR,XGBoost (tuned),0.883
+NR-AhR,Logistic Reg (CV),0.859
+NR-Aromatase,Random Forest (tuned),0.825
+NR-Aromatase,XGBoost (tuned),0.813
+NR-Aromatase,Logistic Reg (CV),0.778
+NR-ER,Random Forest (tuned),0.731
+NR-ER,XGBoost (tuned),0.718
+NR-ER,Logistic Reg (CV),0.68
+NR-ER-LBD,Random Forest (tuned),0.807
+NR-ER-LBD,XGBoost (tuned),0.795
+NR-ER-LBD,Logistic Reg (CV),0.776
+NR-PPAR-gamma,Random Forest (tuned),0.83
+NR-PPAR-gamma,XGBoost (tuned),0.801
+NR-PPAR-gamma,Logistic Reg (CV),0.784
+SR-ARE,Random Forest (tuned),0.81
+SR-ARE,XGBoost (tuned),0.789
+SR-ARE,Logistic Reg (CV),0.762
+SR-ATAD5,Random Forest (tuned),0.858
+SR-ATAD5,XGBoost (tuned),0.832
+SR-ATAD5,Logistic Reg (CV),0.811
+SR-HSE,Random Forest (tuned),0.776
+SR-HSE,XGBoost (tuned),0.759
+SR-HSE,Logistic Reg (CV),0.716
+SR-MMP,Random Forest (tuned),0.87
+SR-MMP,XGBoost (tuned),0.87
+SR-MMP,Logistic Reg (CV),0.852
+SR-p53,Random Forest (tuned),0.844
+SR-p53,XGBoost (tuned),0.828
+SR-p53,Logistic Reg (CV),0.782

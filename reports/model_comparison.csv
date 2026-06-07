@@ -1,0 +1,37 @@
+Target,Model,ROC-AUC,PR-AUC
+NR-AR,Random Forest,0.741,0.459
+NR-AR,XGBoost,0.714,0.45
+NR-AR,Logistic Reg,0.735,0.411
+NR-AR-LBD,Random Forest,0.794,0.52
+NR-AR-LBD,XGBoost,0.79,0.512
+NR-AR-LBD,Logistic Reg,0.799,0.494
+NR-AhR,Random Forest,0.908,0.623
+NR-AhR,XGBoost,0.892,0.597
+NR-AhR,Logistic Reg,0.872,0.537
+NR-Aromatase,Random Forest,0.871,0.499
+NR-Aromatase,XGBoost,0.814,0.503
+NR-Aromatase,Logistic Reg,0.84,0.384
+NR-ER,Random Forest,0.7,0.372
+NR-ER,XGBoost,0.666,0.373
+NR-ER,Logistic Reg,0.677,0.326
+NR-ER-LBD,Random Forest,0.787,0.371
+NR-ER-LBD,XGBoost,0.746,0.386
+NR-ER-LBD,Logistic Reg,0.793,0.403
+NR-PPAR-gamma,Random Forest,0.807,0.257
+NR-PPAR-gamma,XGBoost,0.78,0.209
+NR-PPAR-gamma,Logistic Reg,0.76,0.18
+SR-ARE,Random Forest,0.823,0.545
+SR-ARE,XGBoost,0.787,0.506
+SR-ARE,Logistic Reg,0.77,0.468
+SR-ATAD5,Random Forest,0.861,0.314
+SR-ATAD5,XGBoost,0.82,0.289
+SR-ATAD5,Logistic Reg,0.843,0.28
+SR-HSE,Random Forest,0.799,0.324
+SR-HSE,XGBoost,0.718,0.295
+SR-HSE,Logistic Reg,0.721,0.237
+SR-MMP,Random Forest,0.874,0.634
+SR-MMP,XGBoost,0.864,0.653
+SR-MMP,Logistic Reg,0.838,0.611
+SR-p53,Random Forest,0.852,0.326
+SR-p53,XGBoost,0.818,0.328
+SR-p53,Logistic Reg,0.784,0.273

@@ -104,6 +104,7 @@ function ProbabilityGauge({ probability, size = 56 }) {
   const circ = 2 * Math.PI * r;
   const dash = (probability * circ).toFixed(1);
   const gap = (circ - dash).toFixed(1);
+  const fontSize = size * 0.24;
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -118,7 +119,7 @@ function ProbabilityGauge({ probability, size = 56 }) {
         strokeDashoffset={circ * 0.25}
         style={{ transition: "stroke-dasharray 0.8s ease" }}
       />
-      <text x={size/2} y={size/2 + 5} textAnchor="middle" fontSize="11" fontWeight="600" fill={color} fontFamily="monospace">
+      <text x={size/2} y={size/2 + fontSize * 0.35} textAnchor="middle" fontSize={fontSize} fontWeight="700" fill={color} fontFamily="monospace">
         {Math.round(probability * 100)}%
       </text>
     </svg>
@@ -126,9 +127,44 @@ function ProbabilityGauge({ probability, size = 56 }) {
 }
 
 // ─── PDF Generator ────────────────────────────────────────────────────────────
+
+// Converts an SVG string into a PNG data URL so jsPDF can embed it
+// (jsPDF has no native SVG support, only raster images).
+function svgToPngDataUrl(svgText, targetWidthPx = 600) {
+  return new Promise((resolve, reject) => {
+    const svgBlob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+
+    img.onload = () => {
+      const aspect = img.height / img.width || 1;
+      const canvas = document.createElement("canvas");
+      canvas.width = targetWidthPx;
+      canvas.height = Math.round(targetWidthPx * aspect);
+
+      const ctx = canvas.getContext("2d");
+      // white backing so the molecule (drawn for a light background) stays legible
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      URL.revokeObjectURL(url);
+      resolve({ dataUrl: canvas.toDataURL("image/png"), aspect });
+    };
+
+    img.onerror = (err) => {
+      URL.revokeObjectURL(url);
+      reject(err);
+    };
+
+    img.src = url;
+  });
+}
+
 async function generatePDF(smiles, predictions, honesty_note, structure_svg, top_bit_present) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const W = 210, margin = 20;
+  // eslint-disable-next-line no-useless-assignment
   let y = margin;
 
   // ── helpers ──
@@ -139,7 +175,7 @@ async function generatePDF(smiles, predictions, honesty_note, structure_svg, top
   };
 
   const text = (str, x, yy, opts = {}) => {
-    const { size = 10, color = [220, 230, 255], weight = "normal", align = "left" } = opts;
+    const { size = 11, color = [220, 230, 255], weight = "normal", align = "left" } = opts;
     doc.setFontSize(size);
     doc.setTextColor(...color);
     doc.setFont("helvetica", weight);
@@ -151,6 +187,15 @@ async function generatePDF(smiles, predictions, honesty_note, structure_svg, top
     doc.roundedRect(x, yy, w, h, radius, radius, "F");
   };
 
+  const newPage = () => {
+    doc.addPage();
+    doc.setFillColor(10, 15, 30);
+    doc.rect(0, 0, W, 297, "F");
+    doc.setFillColor(0, 212, 177);
+    doc.rect(0, 0, 6, 297, "F");
+    return 20;
+  };
+
   // ── Cover: dark bg ──
   doc.setFillColor(10, 15, 30);
   doc.rect(0, 0, W, 297, "F");
@@ -160,23 +205,46 @@ async function generatePDF(smiles, predictions, honesty_note, structure_svg, top
   doc.rect(0, 0, 6, 297, "F");
 
   // Title area
-  text("TOX21 BENCH", margin + 6, 35, { size: 28, weight: "bold", color: [220, 240, 255] });
-  text("Molecular Toxicity Prediction Report", margin + 6, 44, { size: 11, color: [100, 140, 200] });
+  text("TOX21 BENCH", margin + 6, 35, { size: 30, weight: "bold", color: [220, 240, 255] });
+  text("Molecular Toxicity Prediction Report", margin + 6, 45, { size: 13, color: [120, 160, 210] });
 
-  line(margin + 6, 50, W - margin, 50, [0, 212, 177], 0.5);
+  line(margin + 6, 51, W - margin, 51, [0, 212, 177], 0.5);
 
   // metadata
-  text(`Generated: ${new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" })}`, margin + 6, 58, { size: 8, color: [100, 130, 170] });
-  text(`Model: Random Forest (2048-bit Morgan FP, radius 2)  |  Tox21 Dataset  |  12 Endpoints`, margin + 6, 63, { size: 8, color: [100, 130, 170] });
+  text(`Generated: ${new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" })}`, margin + 6, 59, { size: 9.5, color: [120, 150, 190] });
+  text(`Model: Random Forest (2048-bit Morgan FP, radius 2)  |  Tox21 Dataset  |  12 Endpoints`, margin + 6, 65, { size: 9.5, color: [120, 150, 190] });
 
   // SMILES section
-  y = 78;
-  text("INPUT STRUCTURE", margin + 6, y, { size: 7, color: [0, 212, 177], weight: "bold" });
-  y += 5;
-  rect(margin + 6, y, W - margin * 2 - 6, 14, [20, 32, 60], 3);
-  text(smiles.length > 70 ? smiles.slice(0, 70) + "…" : smiles, margin + 12, y + 5, { size: 8, color: [180, 210, 255] });
-  text("SMILES notation", margin + 12, y + 10, { size: 7, color: [80, 110, 150] });
-  y += 20;
+  y = 80;
+  text("INPUT STRUCTURE", margin + 6, y, { size: 9, color: [0, 212, 177], weight: "bold" });
+  y += 6;
+  rect(margin + 6, y, W - margin * 2 - 6, 15, [20, 32, 60], 3);
+  text(smiles.length > 65 ? smiles.slice(0, 65) + "…" : smiles, margin + 12, y + 6, { size: 9.5, color: [200, 220, 255] });
+  text("SMILES notation", margin + 12, y + 11.5, { size: 8, color: [100, 130, 170] });
+  y += 22;
+
+  // ── Molecular structure image ──
+  if (structure_svg) {
+    try {
+      const { dataUrl, aspect } = await svgToPngDataUrl(structure_svg, 700);
+      text("MOLECULAR STRUCTURE", margin + 6, y, { size: 9, color: [0, 212, 177], weight: "bold" });
+      y += 6;
+
+      const imgW = 80; // mm
+      const imgH = imgW * aspect;
+      rect(margin + 6, y, W - margin * 2 - 6, imgH + 10, [255, 255, 255], 3);
+      doc.addImage(dataUrl, "PNG", (W - imgW) / 2, y + 5, imgW, imgH);
+
+      if (top_bit_present) {
+        text("Highlighted region: Bit 1750 (extended aromatic ring — top NR-AhR feature)", margin + 6, y + imgH + 9, { size: 7.5, color: [0, 150, 130] });
+      }
+      y += imgH + 16;
+    } catch {
+      // If rasterization fails for any reason, skip the image rather than
+      // breaking the whole report — the SMILES text above still identifies
+      // the molecule.
+    }
+  }
 
   // Verdict
   const verdict = overallVerdict(predictions);
@@ -189,155 +257,121 @@ async function generatePDF(smiles, predictions, honesty_note, structure_svg, top
   };
   const vc = verdictColors[verdict];
 
-  text("OVERALL ASSESSMENT", margin + 6, y, { size: 7, color: [0, 212, 177], weight: "bold" });
-  y += 5;
-  rect(margin + 6, y, W - margin * 2 - 6, 22, [20, 32, 60], 3);
+  if (y > 230) y = newPage();
+
+  text("OVERALL ASSESSMENT", margin + 6, y, { size: 9, color: [0, 212, 177], weight: "bold" });
+  y += 6;
+  rect(margin + 6, y, W - margin * 2 - 6, 24, [20, 32, 60], 3);
   doc.setFillColor(...vc);
-  doc.roundedRect(margin + 10, y + 4, 40, 14, 2, 2, "F");
-  text(vs.label, margin + 30, y + 12, { size: 9, weight: "bold", color: [10, 15, 30], align: "center" });
+  doc.roundedRect(margin + 10, y + 4, 42, 16, 2, 2, "F");
+  text(vs.label, margin + 31, y + 13, { size: 10.5, weight: "bold", color: [10, 15, 30], align: "center" });
 
   const toxicCount = predictions.filter(p => p.probability >= THRESHOLD).length;
   const highCount = predictions.filter(p => p.probability >= HIGH_RISK).length;
-  text(`${toxicCount}/12 endpoints flagged  |  ${highCount} high-risk`, margin + 58, y + 8, { size: 9, color: [200, 220, 255] });
-  text(`Threshold: ≥50% = active  |  ≥70% = high risk`, margin + 58, y + 15, { size: 7, color: [100, 130, 170] });
-  y += 30;
+  text(`${toxicCount}/12 endpoints flagged  |  ${highCount} high-risk`, margin + 58, y + 10, { size: 10.5, color: [210, 225, 255] });
+  text(`Threshold: ≥50% = active  |  ≥70% = high risk`, margin + 58, y + 17, { size: 8.5, color: [120, 150, 190] });
+  y += 32;
 
   // ── Predictions table ──
-  text("ENDPOINT PREDICTIONS", margin + 6, y, { size: 7, color: [0, 212, 177], weight: "bold" });
-  y += 5;
+  if (y > 230) y = newPage();
+  text("ENDPOINT PREDICTIONS", margin + 6, y, { size: 9, color: [0, 212, 177], weight: "bold" });
+  y += 6;
 
   // Column headers
-  rect(margin + 6, y, W - margin * 2 - 6, 7, [20, 40, 80], 2);
-  text("Endpoint", margin + 10, y + 5, { size: 7, weight: "bold", color: [150, 180, 220] });
-  text("System", margin + 70, y + 5, { size: 7, weight: "bold", color: [150, 180, 220] });
-  text("Score", margin + 120, y + 5, { size: 7, weight: "bold", color: [150, 180, 220] });
-  text("Risk", margin + 140, y + 5, { size: 7, weight: "bold", color: [150, 180, 220] });
-  text("Assessment", margin + 158, y + 5, { size: 7, weight: "bold", color: [150, 180, 220] });
-  y += 10;
+  rect(margin + 6, y, W - margin * 2 - 6, 8, [20, 40, 80], 2);
+  text("Endpoint", margin + 10, y + 5.5, { size: 8.5, weight: "bold", color: [165, 195, 230] });
+  text("System", margin + 70, y + 5.5, { size: 8.5, weight: "bold", color: [165, 195, 230] });
+  text("Score", margin + 120, y + 5.5, { size: 8.5, weight: "bold", color: [165, 195, 230] });
+  text("Risk", margin + 140, y + 5.5, { size: 8.5, weight: "bold", color: [165, 195, 230] });
+  text("Assessment", margin + 158, y + 5.5, { size: 8.5, weight: "bold", color: [165, 195, 230] });
+  y += 11;
 
   for (const pred of predictions) {
-    if (y > 260) {
-      doc.addPage();
-      doc.setFillColor(10, 15, 30);
-      doc.rect(0, 0, W, 297, "F");
-      doc.setFillColor(0, 212, 177);
-      doc.rect(0, 0, 6, 297, "F");
-      y = 20;
-    }
+    if (y > 258) y = newPage();
     const info = TARGET_INFO[pred.target] || {};
     const level = riskLevel(pred.probability);
     const rc = level === "high" ? [255, 71, 87] : level === "moderate" ? [255, 165, 2] : [46, 213, 115];
     const rowBg = pred.probability >= THRESHOLD ? [25, 38, 70] : [18, 28, 50];
 
-    rect(margin + 6, y - 1, W - margin * 2 - 6, 8, rowBg, 1);
+    rect(margin + 6, y - 1.5, W - margin * 2 - 6, 9, rowBg, 1);
 
     // risk indicator
     doc.setFillColor(...rc);
-    doc.rect(margin + 6, y - 1, 2.5, 8, "F");
+    doc.rect(margin + 6, y - 1.5, 2.5, 9, "F");
 
-    text(pred.target, margin + 10, y + 4, { size: 7, color: [200, 220, 255] });
-    text(info.system || "—", margin + 70, y + 4, { size: 6.5, color: [100, 130, 170] });
-    text(`${(pred.probability * 100).toFixed(1)}%`, margin + 120, y + 4, { size: 7.5, weight: "bold", color: rc });
+    text(pred.target, margin + 10, y + 4, { size: 8.5, color: [205, 222, 255] });
+    text(info.system || "—", margin + 70, y + 4, { size: 8, color: [115, 145, 185] });
+    text(`${(pred.probability * 100).toFixed(1)}%`, margin + 120, y + 4, { size: 9, weight: "bold", color: rc });
 
     // mini bar
-    rect(margin + 138, y + 1, 18, 4, [20, 40, 80], 1);
-    rect(margin + 138, y + 1, Math.round(18 * pred.probability), 4, rc, 1);
+    rect(margin + 138, y + 0.5, 18, 4.5, [20, 40, 80], 1);
+    rect(margin + 138, y + 0.5, Math.round(18 * pred.probability), 4.5, rc, 1);
 
-    text(riskLabel(level), margin + 158, y + 4, { size: 6.5, color: rc });
-    y += 10;
+    text(riskLabel(level), margin + 158, y + 4, { size: 8, color: rc });
+    y += 11;
   }
 
   // ── Explanations ──
   y += 6;
-  if (y > 240) {
-    doc.addPage();
-    doc.setFillColor(10, 15, 30);
-    doc.rect(0, 0, W, 297, "F");
-    doc.setFillColor(0, 212, 177);
-    doc.rect(0, 0, 6, 297, "F");
-    y = 20;
-  }
-  text("ENDPOINT EXPLANATIONS", margin + 6, y, { size: 7, color: [0, 212, 177], weight: "bold" });
-  y += 5;
+  if (y > 235) y = newPage();
+  text("ENDPOINT EXPLANATIONS", margin + 6, y, { size: 9, color: [0, 212, 177], weight: "bold" });
+  y += 6;
 
   const flagged = predictions.filter(p => p.probability >= THRESHOLD);
-  
 
   for (const pred of flagged) {
-    if (y > 270) {
-      doc.addPage();
-      doc.setFillColor(10, 15, 30);
-      doc.rect(0, 0, W, 297, "F");
-      doc.setFillColor(0, 212, 177);
-      doc.rect(0, 0, 6, 297, "F");
-      y = 20;
-    }
+    if (y > 262) y = newPage();
     const info = TARGET_INFO[pred.target] || {};
     const level = riskLevel(pred.probability);
     const rc = level === "high" ? [255, 71, 87] : [255, 165, 2];
-    rect(margin + 6, y, W - margin * 2 - 6, 22, [22, 35, 65], 3);
+    rect(margin + 6, y, W - margin * 2 - 6, 25, [22, 35, 65], 3);
     doc.setFillColor(...rc);
-    doc.rect(margin + 6, y, 3, 22, "F");
-    text(`${pred.target}  —  ${info.label || ""}`, margin + 12, y + 6, { size: 8, weight: "bold", color: [210, 225, 255] });
-    text(`${(pred.probability * 100).toFixed(1)}% probability  |  ${riskLabel(level)}`, margin + 12, y + 12, { size: 7, color: rc });
+    doc.rect(margin + 6, y, 3, 25, "F");
+    text(`${pred.target}  —  ${info.label || ""}`, margin + 12, y + 7, { size: 9.5, weight: "bold", color: [215, 230, 255] });
+    text(`${(pred.probability * 100).toFixed(1)}% probability  |  ${riskLabel(level)}`, margin + 12, y + 13.5, { size: 8.5, color: rc });
     const wrapped = doc.splitTextToSize(info.desc || "No description available.", W - margin * 2 - 22);
-    doc.setFontSize(6.5);
-    doc.setTextColor(120, 150, 190);
-    doc.text(wrapped, margin + 12, y + 17);
-    y += 26;
+    doc.setFontSize(8);
+    doc.setTextColor(135, 165, 205);
+    doc.text(wrapped, margin + 12, y + 19);
+    y += 29;
   }
 
   // ── Structural note ──
   if (honesty_note) {
     y += 4;
-    if (y > 250) {
-      doc.addPage();
-      doc.setFillColor(10, 15, 30);
-      doc.rect(0, 0, W, 297, "F");
-      doc.setFillColor(0, 212, 177);
-      doc.rect(0, 0, 6, 297, "F");
-      y = 20;
-    }
-    text("STRUCTURAL NOTE (NR-AhR — Bit 1750)", margin + 6, y, { size: 7, color: [0, 212, 177], weight: "bold" });
-    y += 5;
-    rect(margin + 6, y, W - margin * 2 - 6, 28, [18, 30, 55], 3);
+    if (y > 240) y = newPage();
+    text("STRUCTURAL NOTE (NR-AhR — Bit 1750)", margin + 6, y, { size: 9, color: [0, 212, 177], weight: "bold" });
+    y += 6;
+    rect(margin + 6, y, W - margin * 2 - 6, 30, [18, 30, 55], 3);
     doc.setFillColor(0, 212, 177);
-    doc.rect(margin + 6, y, 3, 28, "F");
+    doc.rect(margin + 6, y, 3, 30, "F");
     const wrapped = doc.splitTextToSize(honesty_note, W - margin * 2 - 18);
-    doc.setFontSize(7);
-    doc.setTextColor(160, 190, 230);
-    doc.text(wrapped, margin + 12, y + 6);
-    y += 34;
+    doc.setFontSize(8.5);
+    doc.setTextColor(170, 200, 235);
+    doc.text(wrapped, margin + 12, y + 7);
+    y += 36;
   }
 
   // ── Disclaimer ──
   y += 4;
-  if (y > 260) {
-    doc.addPage();
-    doc.setFillColor(10, 15, 30);
-    doc.rect(0, 0, W, 297, "F");
-    doc.setFillColor(0, 212, 177);
-    doc.rect(0, 0, 6, 297, "F");
-    y = 20;
-  }
+  if (y > 255) y = newPage();
   line(margin + 6, y, W - margin, y, [40, 60, 100], 0.3);
+  y += 7;
+  text("DISCLAIMER", margin + 6, y, { size: 9, color: [95, 125, 165], weight: "bold" });
   y += 6;
-  text("DISCLAIMER", margin + 6, y, { size: 7, color: [80, 110, 150], weight: "bold" });
-  y += 5;
   const disclaimer = "This report is generated by a machine learning model trained on the Tox21 dataset. Predictions are probabilistic and do not constitute regulatory toxicology assessments. All results should be validated through wet-lab assays before use in any decision-making context. The model may produce false positives or false negatives. No warranty of accuracy is expressed or implied.";
   const dWrapped = doc.splitTextToSize(disclaimer, W - margin * 2 - 6);
-  doc.setFontSize(6.5);
-  doc.setTextColor(70, 100, 140);
+  doc.setFontSize(8);
+  doc.setTextColor(85, 115, 155);
   doc.text(dWrapped, margin + 6, y);
 
   // footer
-  doc.setFontSize(7);
-  doc.setTextColor(40, 70, 110);
+  doc.setFontSize(8.5);
+  doc.setTextColor(55, 85, 125);
   doc.text("Tox21 Bench  •  Powered by Random Forest Classifiers  •  Tox21 Challenge Dataset", W / 2, 290, { align: "center" });
 
   doc.save(`tox21_report_${smiles.slice(0, 12).replace(/[^a-zA-Z0-9]/g, "")}_${Date.now()}.pdf`);
 }
-
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [smiles, setSmiles] = useState("");
@@ -406,14 +440,16 @@ export default function App() {
       {/* ── Nav ── */}
       <nav style={{
         position: "sticky", top: 0, zIndex: 100,
-        background: "#060D1Fcc",
-        backdropFilter: "blur(12px)",
-        borderBottom: "1px solid #1a2a4a",
-        display: "flex", alignItems: "center",
-        padding: "0 32px", height: 60,
-        gap: 16,
+  background: "#060D1Fd9",
+  backdropFilter: "blur(16px) saturate(140%)",
+  WebkitBackdropFilter: "blur(16px) saturate(140%)",
+  borderBottom: "1px solid #1a2a4a",
+  boxShadow: "0 1px 0 #00D4B120, 0 8px 24px -16px #00000080",
+  display: "flex", alignItems: "center",
+  padding: "0 36px", height: 76,
+  gap: 20,
       }}>
-        <Logo size={28} />
+        <Logo size={36} />
         <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.3px", color: "#E0EAFF" }}>Tox21 Bench</span>
         <span style={{ color: "#3a5080", fontSize: 12, marginLeft: 4 }}>/ Toxicity Predictor</span>
         <div style={{ flex: 1 }} />
@@ -422,9 +458,13 @@ export default function App() {
           Tox21 Dataset ↗
         </a>
         <span style={{
-          background: "#00D4B115", border: "1px solid #00D4B140",
-          color: "#00D4B1", fontSize: 11, padding: "3px 10px", borderRadius: 20,
-        }}>12 Endpoints</span>
+    background: "#00D4B118", border: "1px solid #00D4B150",
+    color: "#1AE8C6", fontSize: 13, fontWeight: 700,
+    padding: "6px 14px", borderRadius: 20,
+    letterSpacing: "0.03em",
+  }}>
+    12 Endpoints
+  </span>
       </nav>
 
       {/* ── Hero ── */}
@@ -446,322 +486,381 @@ export default function App() {
       </header>
 
       {/* ── Main ── */}
-      <main style={{ maxWidth: 2000, margin: "0 auto", padding: "40px 24px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: result ? "380px 1fr" : "1fr", gap: 24, transition: "all 0.3s" }}>
+<main style={{ maxWidth: 1280, margin: "0 auto", padding: "56px 32px" }}>
+  <div style={{ display: "grid", gridTemplateColumns: result ? "440px 1fr" : "1fr", gap: 32, transition: "all 0.3s" }}>
 
-          {/* ── Input Panel ── */}
-          <div>
-            <div style={{ background: "#0D1A35", border: "1px solid #1a2a4a", borderRadius: 16, padding: 24 }}>
-              <h2 style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "#00D4B1", textTransform: "uppercase", letterSpacing: "0.08em" }}>Input Molecule</h2>
-              <p style={{ margin: "0 0 16px", fontSize: 12, color: "#4a6080" }}>Enter a valid SMILES string</p>
+    {/* ── Input Panel ── */}
+<div>
+  <div style={{ background: "#0D1A35", border: "1px solid #1a2a4a", borderRadius: 20, padding: 32 }}>
+    <h2 style={{ margin: "0 0 10px", fontSize: 19, fontWeight: 800, color: "#1AE8C6", textTransform: "uppercase", letterSpacing: "0.06em" }}>Input Molecule</h2>
+    <p style={{ margin: "0 0 22px", fontSize: 16, color: "#84a0c0" }}>Enter a valid SMILES string</p>
 
-              <textarea
-                ref={inputRef}
-                value={smiles}
-                onChange={e => setSmiles(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && e.ctrlKey && runPrediction()}
-                placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O"
-                rows={4}
-                style={{
-                  width: "100%", boxSizing: "border-box",
-                  background: "#081020", border: "1px solid #1e3058",
-                  borderRadius: 10, padding: "12px 14px",
-                  color: "#a0c4f0", fontSize: 13, fontFamily: "monospace",
-                  resize: "vertical", outline: "none",
-                  lineHeight: 1.6,
-                }}
-              />
+    <textarea
+      ref={inputRef}
+      value={smiles}
+      onChange={e => setSmiles(e.target.value)}
+      onKeyDown={e => e.key === "Enter" && e.ctrlKey && runPrediction()}
+      placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O"
+      rows={1}
+      style={{
+        width: "100%", boxSizing: "border-box",
+        background: "#081020", border: "1.5px solid #24386a",
+        borderRadius: 14, padding: "14px 18px",
+        color: "#c8e0fa", fontSize: 16, fontFamily: "monospace",
+        resize: "none", outline: "none",
+        lineHeight: 1.5,
+      }}
+    />
 
-              {error && (
-                <div style={{ marginTop: 8, background: "#FF475718", border: "1px solid #FF475740", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#FF7088" }}>
-                  ⚠ {error}
-                </div>
-              )}
+    {error && (
+      <div style={{ marginTop: 12, background: "#FF475718", border: "1px solid #FF475740", borderRadius: 12, padding: "12px 16px", fontSize: 15, color: "#FF7088" }}>
+        ⚠ {error}
+      </div>
+    )}
 
-              <button
-                onClick={runPrediction}
-                disabled={loading || !smiles.trim()}
-                style={{
-                  marginTop: 14, width: "100%",
-                  background: loading ? "#1a3060" : "#00D4B1",
-                  color: loading ? "#6090c0" : "#060D1F",
-                  border: "none", borderRadius: 10,
-                  padding: "13px 0", fontSize: 14, fontWeight: 700,
-                  cursor: loading ? "not-allowed" : "pointer",
-                  transition: "all 0.2s", letterSpacing: "0.01em",
-                }}
-              >
-                {loading ? "Analyzing…" : "Run Prediction →"}
-              </button>
+    <button
+      onClick={runPrediction}
+      disabled={loading || !smiles.trim()}
+      style={{
+        marginTop: 18, width: "100%",
+        background: loading ? "#1a3060" : "#00D4B1",
+        color: loading ? "#6090c0" : "#060D1F",
+        border: "none", borderRadius: 14,
+        padding: "18px 0", fontSize: 18, fontWeight: 800,
+        cursor: loading ? "not-allowed" : "pointer",
+        transition: "all 0.2s", letterSpacing: "0.01em",
+      }}
+    >
+      {loading ? "Analyzing…" : "Run Prediction →"}
+    </button>
 
-              <p style={{ textAlign: "center", fontSize: 11, color: "#304060", marginTop: 8 }}>Ctrl + Enter to run</p>
+    <p style={{ textAlign: "center", fontSize: 14, color: "#5a7898", marginTop: 12 }}>Ctrl + Enter to run</p>
 
-              {/* Examples */}
-              <div style={{ marginTop: 20 }}>
-                <p style={{ fontSize: 11, color: "#304060", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Quick examples</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {examples.map(ex => (
-                    <button
-                      key={ex.label}
-                      onClick={() => { setSmiles(ex.smiles); setError(""); }}
-                      style={{
-                        background: "#0a1830", border: "1px solid #1e3058",
-                        color: "#6090b8", borderRadius: 6,
-                        padding: "5px 10px", fontSize: 11, cursor: "pointer",
-                        transition: "all 0.15s",
-                      }}
-                      onMouseEnter={e => { e.target.style.borderColor = "#00D4B160"; e.target.style.color = "#00D4B1"; }}
-                      onMouseLeave={e => { e.target.style.borderColor = "#1e3058"; e.target.style.color = "#6090b8"; }}
-                    >
-                      {ex.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Model Info */}
-            <div style={{ marginTop: 16, background: "#0D1A35", border: "1px solid #1a2a4a", borderRadius: 16, padding: 20 }}>
-              <h3 style={{ margin: "0 0 12px", fontSize: 12, color: "#304060", textTransform: "uppercase", letterSpacing: "0.06em" }}>Model Details</h3>
-              {[
-                ["Algorithm", "Random Forest"],
-                ["Fingerprint", "Morgan (ECFP4)"],
-                ["Bits", "2048"],
-                ["Radius", "2"],
-                ["Endpoints", "12 (Tox21)"],
-                ["Training", "Tox21 Challenge"],
-              ].map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 12 }}>
-                  <span style={{ color: "#4a6080" }}>{k}</span>
-                  <span style={{ color: "#90b0d0", fontFamily: "monospace" }}>{v}</span>
-                </div>
-              ))}
-            </div>
+    {/* Examples */}
+    <div style={{ marginTop: 28 }}>
+      <p style={{ fontSize: 14, color: "#5a7898", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>Quick examples</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        {examples.map(ex => (
+          <button
+            key={ex.label}
+            onClick={() => { setSmiles(ex.smiles); setError(""); }}
+            style={{
+              background: "#0a1830", border: "1.5px solid #24386a",
+              color: "#84a0c0", borderRadius: 10,
+              padding: "9px 16px", fontSize: 15, fontWeight: 600, cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={e => { e.target.style.borderColor = "#00D4B180"; e.target.style.color = "#1AE8C6"; e.target.style.background = "#0c2030"; }}
+            onMouseLeave={e => { e.target.style.borderColor = "#24386a"; e.target.style.color = "#84a0c0"; e.target.style.background = "#0a1830"; }}
+          >
+            {ex.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  </div>
+      {/* Model Info */}
+      <div style={{ marginTop: 22, background: "#0D1A35", border: "1px solid #1a2a4a", borderRadius: 20, padding: 28 }}>
+        <h3 style={{ margin: "0 0 18px", fontSize: 16, color: "#7898ba", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 800 }}>Model Details</h3>
+        {[
+          ["Algorithm", "Random Forest"],
+          ["Fingerprint", "Morgan (ECFP4)"],
+          ["Bits", "2048"],
+          ["Radius", "2"],
+          ["Endpoints", "12 (Tox21)"],
+          ["Training", "Tox21 Challenge"],
+        ].map(([k, v]) => (
+          <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 11, fontSize: 16 }}>
+            <span style={{ color: "#7898ba" }}>{k}</span>
+            <span style={{ color: "#c8dcf4", fontFamily: "monospace", fontWeight: 700 }}>{v}</span>
           </div>
+        ))}
+      </div>
+    </div>
 
           {/* ── Results Panel ── */}
-          {result && (
-            <div>
-              {/* Verdict Banner */}
-              <div style={{
-                background: `${vs.bg}`,
-                border: `1px solid ${vs.border}40`,
-                borderRadius: 16,
-                padding: "20px 24px",
-                marginBottom: 20,
-                display: "flex",
-                alignItems: "center",
-                gap: 20,
-              }}>
-                <div style={{
-                  width: 64, height: 64,
-                  borderRadius: "50%",
-                  background: `${vs.border}20`,
-                  border: `2px solid ${vs.border}60`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 28, color: vs.border, flexShrink: 0,
-                }}>
-                  {vs.icon}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: vs.border, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>Overall Assessment</div>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: vs.border, letterSpacing: "-0.5px" }}>{vs.label}</div>
-                  <div style={{ fontSize: 13, color: "#6080a0", marginTop: 4 }}>
-                    {toxicPreds.length} of 12 endpoints flagged active
-                    {result.predictions.filter(p => p.probability >= HIGH_RISK).length > 0 &&
-                      ` · ${result.predictions.filter(p => p.probability >= HIGH_RISK).length} high-risk`}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 16, flexShrink: 0 }}>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: "#FF4757" }}>{result.predictions.filter(p=>p.probability>=HIGH_RISK).length}</div>
-                    <div style={{ fontSize: 10, color: "#4a6080" }}>HIGH RISK</div>
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: "#FFA502" }}>{result.predictions.filter(p=>p.probability>=THRESHOLD&&p.probability<HIGH_RISK).length}</div>
-                    <div style={{ fontSize: 10, color: "#4a6080" }}>MODERATE</div>
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: "#2ED573" }}>{result.predictions.filter(p=>p.probability<THRESHOLD).length}</div>
-                    <div style={{ fontSize: 10, color: "#4a6080" }}>LOW RISK</div>
-                  </div>
-                </div>
+{result && (
+  <div>
+    {/* Verdict Banner */}
+    <div style={{
+      background: `${vs.bg}`,
+      border: `1px solid ${vs.border}40`,
+      borderRadius: 20,
+      padding: "28px 30px",
+      marginBottom: 24,
+      display: "flex",
+      alignItems: "center",
+      gap: 24,
+    }}>
+      <div style={{
+        width: 80, height: 80,
+        borderRadius: "50%",
+        background: `${vs.border}20`,
+        border: `2.5px solid ${vs.border}60`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 36, color: vs.border, flexShrink: 0,
+      }}>
+        {vs.icon}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, color: vs.border, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 6, fontWeight: 700 }}>Overall Assessment</div>
+        <div style={{ fontSize: 30, fontWeight: 800, color: vs.border, letterSpacing: "-0.5px" }}>{vs.label}</div>
+        <div style={{ fontSize: 15, color: "#84a0c0", marginTop: 6 }}>
+          {toxicPreds.length} of 12 endpoints flagged active
+          {result.predictions.filter(p => p.probability >= HIGH_RISK).length > 0 &&
+            ` · ${result.predictions.filter(p => p.probability >= HIGH_RISK).length} high-risk`}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 22, flexShrink: 0 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 34, fontWeight: 800, color: "#FF4757" }}>{result.predictions.filter(p=>p.probability>=HIGH_RISK).length}</div>
+          <div style={{ fontSize: 12, color: "#7090b0", fontWeight: 600, letterSpacing: "0.04em" }}>HIGH RISK</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 34, fontWeight: 800, color: "#FFA502" }}>{result.predictions.filter(p=>p.probability>=THRESHOLD&&p.probability<HIGH_RISK).length}</div>
+          <div style={{ fontSize: 12, color: "#7090b0", fontWeight: 600, letterSpacing: "0.04em" }}>MODERATE</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 34, fontWeight: 800, color: "#2ED573" }}>{result.predictions.filter(p=>p.probability<THRESHOLD).length}</div>
+          <div style={{ fontSize: 12, color: "#7090b0", fontWeight: 600, letterSpacing: "0.04em" }}>LOW RISK</div>
+        </div>
+      </div>
+    </div>
+
+    {/* Honesty Note */}
+    {result.honesty_note && (
+      <div style={{ background: "#00D4B10c", border: "1px solid #00D4B140", borderRadius: 16, padding: "18px 22px", marginBottom: 24, display: "flex", gap: 16 }}>
+        <span style={{ color: "#1AE8C6", fontSize: 24, flexShrink: 0 }}>🔬</span>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1AE8C6", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Structural Feature Note — NR-AhR</div>
+          <p style={{ margin: 0, fontSize: 15, color: "#84a0c0", lineHeight: 1.65 }}>{result.honesty_note}</p>
+        </div>
+      </div>
+    )}
+
+   {/* Tabs */}
+<div style={{ display: "flex", gap: 8, marginBottom: 24, background: "#0a1628", borderRadius: 16, padding: 8 }}>
+  {["overview", "details", "structure"].map(tab => (
+    <button
+      key={tab}
+      onClick={() => setActiveTab(tab)}
+      style={{
+        flex: 1, padding: "14px 0",
+        background: activeTab === tab ? "#0D1A35" : "transparent",
+        border: activeTab === tab ? "1px solid #2c4070" : "1px solid transparent",
+        borderRadius: 12,
+        color: activeTab === tab ? "#f0f6ff" : "#6688a8",
+        fontSize: 16.5, fontWeight: activeTab === tab ? 800 : 600,
+        cursor: "pointer", transition: "all 0.15s",
+        textTransform: "capitalize",
+      }}
+      onMouseEnter={e => { if (activeTab !== tab) e.currentTarget.style.color = "#9bb4d4"; }}
+      onMouseLeave={e => { if (activeTab !== tab) e.currentTarget.style.color = "#6688a8"; }}
+    >
+      {tab === "overview" ? "Overview" : tab === "details" ? "Endpoint Details" : "Structure"}
+    </button>
+  ))}
+</div>
+
+    {/* Tab: Overview */}
+{activeTab === "overview" && (
+  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+    {result.predictions.map(pred => {
+      const level = riskLevel(pred.probability);
+      const color = riskColor(level);
+      const active = pred.probability >= THRESHOLD;
+      return (
+        <div
+          key={pred.target}
+          style={{
+            background: "#0D1A35",
+            border: `1.5px solid ${active ? `${color}45` : "#1a2a4a"}`,
+            borderRadius: 18, padding: "20px 22px",
+            display: "flex", alignItems: "center", gap: 18,
+            transition: "border-color 0.2s, transform 0.2s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; }}
+          onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
+        >
+          <ProbabilityGauge probability={pred.probability} size={72} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ fontSize: 16.5, fontWeight: 700, color: "#e8f2ff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {pred.target}
               </div>
-
-              {/* Honesty Note */}
-              {result.honesty_note && (
-                <div style={{ background: "#00D4B108", border: "1px solid #00D4B130", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", gap: 12 }}>
-                  <span style={{ color: "#00D4B1", fontSize: 18, flexShrink: 0 }}>🔬</span>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "#00D4B1", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Structural Feature Note — NR-AhR</div>
-                    <p style={{ margin: 0, fontSize: 12, color: "#608098", lineHeight: 1.6 }}>{result.honesty_note}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Tabs */}
-              <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#0a1628", borderRadius: 10, padding: 4 }}>
-                {["overview", "details", "structure"].map(tab => (
-                  <button key={tab} onClick={() => setActiveTab(tab)} style={{
-                    flex: 1, padding: "8px 0",
-                    background: activeTab === tab ? "#0D1A35" : "transparent",
-                    border: activeTab === tab ? "1px solid #1e3058" : "1px solid transparent",
-                    borderRadius: 7,
-                    color: activeTab === tab ? "#c0d8f8" : "#4a6080",
-                    fontSize: 12, fontWeight: activeTab === tab ? 600 : 400,
-                    cursor: "pointer", transition: "all 0.15s",
-                    textTransform: "capitalize",
-                  }}>
-                    {tab === "overview" ? "Overview" : tab === "details" ? "Endpoint Details" : "Structure"}
-                  </button>
-                ))}
+              <div style={{ fontSize: 18, fontWeight: 800, color: active ? color : "#5a7898", flexShrink: 0 }}>
+                {(pred.probability * 100).toFixed(0)}%
               </div>
-
-              {/* Tab: Overview */}
-              {activeTab === "overview" && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  {result.predictions.map(pred => {
-                    const level = riskLevel(pred.probability);
-                    const color = riskColor(level);
-                    return (
-                      <div key={pred.target} style={{
-                        background: "#0D1A35",
-                        border: `1px solid ${pred.probability >= THRESHOLD ? `${color}30` : "#1a2a4a"}`,
-                        borderRadius: 12, padding: "14px 16px",
-                        display: "flex", alignItems: "center", gap: 12,
-                        transition: "border-color 0.2s",
-                      }}>
-                        <ProbabilityGauge probability={pred.probability} size={52} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: "#c0d8f8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pred.target}</div>
-                          <div style={{ fontSize: 10, color: "#3a5878", marginTop: 2 }}>
-                            {TARGET_INFO[pred.target]?.system || ""}
-                          </div>
-                          <div style={{ marginTop: 6, background: "#081020", borderRadius: 4, height: 4, width: "100%" }}>
-                            <div style={{ height: 4, borderRadius: 4, background: color, width: `${pred.probability * 100}%`, transition: "width 0.8s ease" }} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
+            </div>
+            <div style={{ fontSize: 13, color: "#5a7898", marginTop: 4 }}>
+              {TARGET_INFO[pred.target]?.system || ""}
+            </div>
+            <div style={{ marginTop: 11, background: "#081020", borderRadius: 6, height: 7, width: "100%" }}>
+              <div style={{ height: 7, borderRadius: 6, background: color, width: `${pred.probability * 100}%`, transition: "width 0.8s ease" }} />
+            </div>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+)}
               {/* Tab: Details */}
-              {activeTab === "details" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {toxicPreds.length > 0 && (
-                    <>
-                      <div style={{ fontSize: 11, color: "#4a6080", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Flagged Endpoints</div>
-                      {toxicPreds.map(pred => {
-                        const info = TARGET_INFO[pred.target] || {};
-                        const level = riskLevel(pred.probability);
-                        const color = riskColor(level);
-                        return (
-                          <div key={pred.target} style={{ background: "#0D1A35", border: `1px solid ${color}30`, borderRadius: 12, padding: "16px 18px", borderLeft: `3px solid ${color}` }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                              <div>
-                                <div style={{ fontSize: 14, fontWeight: 700, color: "#d0e4ff" }}>{pred.target}</div>
-                                <div style={{ fontSize: 11, color: "#4a6080", marginTop: 2 }}>{info.label} · {info.system}</div>
-                              </div>
-                              <div style={{ textAlign: "right" }}>
-                                <div style={{ fontSize: 20, fontWeight: 800, color }}>{(pred.probability * 100).toFixed(1)}%</div>
-                                <div style={{ fontSize: 10, color, textTransform: "uppercase", letterSpacing: "0.06em" }}>{riskLabel(level)}</div>
-                              </div>
-                            </div>
-                            <div style={{ background: "#081020", borderRadius: 6, height: 6, marginBottom: 10 }}>
-                              <div style={{ height: 6, borderRadius: 6, background: color, width: `${pred.probability * 100}%` }} />
-                            </div>
-                            <p style={{ margin: 0, fontSize: 12, color: "#5070a0", lineHeight: 1.65 }}>{info.desc}</p>
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
-
-                  {safePreds.length > 0 && (
-                    <>
-                      <div style={{ fontSize: 11, color: "#304060", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 8, marginBottom: 4 }}>Below Threshold</div>
-                      {safePreds.map(pred => {
-                        const info = TARGET_INFO[pred.target] || {};
-                        return (
-                          <div key={pred.target} style={{ background: "#090f1e", border: "1px solid #131f38", borderRadius: 12, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                              <span style={{ fontSize: 13, color: "#4a6888" }}>{pred.target}</span>
-                              <span style={{ fontSize: 11, color: "#2a3a58", marginLeft: 8 }}>{info.system}</span>
-                            </div>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: "#2ED573" }}>{(pred.probability * 100).toFixed(1)}%</span>
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
+{activeTab === "details" && (
+  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    {toxicPreds.length > 0 && (
+      <>
+        <div style={{ fontSize: 13, color: "#7090b0", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 700 }}>
+          Flagged Endpoints
+        </div>
+        {toxicPreds.map(pred => {
+          const info = TARGET_INFO[pred.target] || {};
+          const level = riskLevel(pred.probability);
+          const color = riskColor(level);
+          return (
+            <div key={pred.target} style={{
+              background: "#0D1A35",
+              border: `1px solid ${color}35`,
+              borderRadius: 16,
+              padding: "22px 24px",
+              borderLeft: `4px solid ${color}`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#e8f2ff" }}>{pred.target}</div>
+                  <div style={{ fontSize: 13.5, color: "#7090b0", marginTop: 4 }}>
+                    {info.label} · {info.system}
+                  </div>
                 </div>
-              )}
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 27, fontWeight: 800, color }}>
+                    {(pred.probability * 100).toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: 12, color, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginTop: 2 }}>
+                    {riskLabel(level)}
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: "#081020", borderRadius: 8, height: 8, marginBottom: 14 }}>
+                <div style={{ height: 8, borderRadius: 8, background: color, width: `${pred.probability * 100}%`, transition: "width 0.6s ease" }} />
+              </div>
+              <p style={{ margin: 0, fontSize: 14.5, color: "#84a0c0", lineHeight: 1.7 }}>
+                {info.desc}
+              </p>
+            </div>
+          );
+        })}
+      </>
+    )}
+
+    {safePreds.length > 0 && (
+      <>
+        <div style={{ fontSize: 13, color: "#4a6888", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 12, marginBottom: 6, fontWeight: 700 }}>
+          Below Threshold
+        </div>
+        {safePreds.map(pred => {
+          const info = TARGET_INFO[pred.target] || {};
+          return (
+            <div key={pred.target} style={{
+              background: "#090f1e",
+              border: "1px solid #1a2a4a",
+              borderRadius: 14,
+              padding: "16px 20px",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}>
+              <div>
+                <span style={{ fontSize: 15.5, color: "#7090b0", fontWeight: 600 }}>{pred.target}</span>
+                <span style={{ fontSize: 13, color: "#3a5878", marginLeft: 10 }}>{info.system}</span>
+              </div>
+              <span style={{ fontSize: 16, fontWeight: 700, color: "#2ED573" }}>
+                {(pred.probability * 100).toFixed(1)}%
+              </span>
+            </div>
+          );
+        })}
+      </>
+    )}
+  </div>
+)}
 
               {/* Tab: Structure */}
-              {activeTab === "structure" && (
-                <div style={{ background: "#0D1A35", border: "1px solid #1a2a4a", borderRadius: 16, padding: 24 }}>
-                  <div style={{ fontSize: 12, color: "#4a6080", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Molecular Structure
-                    {result.top_bit_present && <span style={{ color: "#00D4B1", marginLeft: 10 }}>· Bit 1750 highlighted</span>}
-                  </div>
-                  <div style={{
-                    background: "#f8f8f8",
-                    borderRadius: 10, padding: 8,
-                    display: "flex", justifyContent: "center",
-                  }}
-                    dangerouslySetInnerHTML={{ __html: result.structure_svg }}
-                  />
-                  <div style={{ marginTop: 14 }}>
-                    <div style={{ fontSize: 11, color: "#304060", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>SMILES</div>
-                    <div style={{ background: "#060d1f", border: "1px solid #1a2a4a", borderRadius: 8, padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "#80b0d8", wordBreak: "break-all" }}>
-                      {result.smiles}
-                    </div>
-                  </div>
-                  {result.top_bit_present && (
-                    <div style={{ marginTop: 14, background: "#00D4B108", border: "1px solid #00D4B130", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#608098" }}>
-                      The highlighted region (teal) shows the Morgan fingerprint substructure corresponding to bit 1750, the top NR-AhR feature.
-                    </div>
-                  )}
-                </div>
-              )}
+{activeTab === "structure" && (
+  <div style={{ background: "#0D1A35", border: "1px solid #1a2a4a", borderRadius: 20, padding: 30 }}>
+    <div style={{ fontSize: 14, color: "#7090b0", marginBottom: 16, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>
+      Molecular Structure
+      {result.top_bit_present && (
+        <span style={{ color: "#1AE8C6", marginLeft: 12 }}>· Bit 1750 highlighted</span>
+      )}
+    </div>
+
+    <div
+      style={{
+        background: "#f8f8f8",
+        borderRadius: 14, padding: 16,
+        display: "flex", justifyContent: "center",
+      }}
+      dangerouslySetInnerHTML={{ __html: result.structure_svg }}
+    />
+
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 13, color: "#5a7898", marginBottom: 9, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>
+        SMILES
+      </div>
+      <div style={{
+        background: "#060d1f", border: "1px solid #24386a", borderRadius: 12,
+        padding: "14px 16px", fontFamily: "monospace", fontSize: 15,
+        color: "#9ec8ec", wordBreak: "break-all", lineHeight: 1.6,
+      }}>
+        {result.smiles}
+      </div>
+    </div>
+
+    {result.top_bit_present && (
+      <div style={{
+        marginTop: 20, background: "#00D4B10c", border: "1px solid #00D4B140",
+        borderRadius: 12, padding: "14px 18px", fontSize: 14.5, color: "#84a0c0",
+        lineHeight: 1.65,
+      }}>
+        The highlighted region (teal) shows the Morgan fingerprint substructure corresponding to bit 1750, the top NR-AhR feature.
+      </div>
+    )}
+  </div>
+)}
 
               {/* Download Button */}
-              <div style={{ marginTop: 20 }}>
-                <button
-                  onClick={handlePDF}
-                  disabled={pdfLoading}
-                  style={{
-                    width: "100%",
-                    background: pdfLoading ? "#0a1628" : "#0D1A35",
-                    border: "1px solid #1e3870",
-                    color: pdfLoading ? "#304060" : "#90b8e0",
-                    borderRadius: 12, padding: "14px 0",
-                    fontSize: 14, fontWeight: 600,
-                    cursor: pdfLoading ? "not-allowed" : "pointer",
-                    transition: "all 0.2s",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  }}
-                  onMouseEnter={e => { if (!pdfLoading) { e.currentTarget.style.borderColor = "#00D4B150"; e.currentTarget.style.color = "#00D4B1"; }}}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e3870"; e.currentTarget.style.color = "#90b8e0"; }}
-                >
-                  <span style={{ fontSize: 16 }}>⬇</span>
-                  {pdfLoading ? "Generating PDF…" : "Download Scientific Report (PDF)"}
-                </button>
-                <p style={{ textAlign: "center", fontSize: 11, color: "#2a3a58", marginTop: 8 }}>
-                  Includes full endpoint analysis, structural notes, and model details
-                </p>
-              </div>
+<div style={{ marginTop: 20 }}>
+  <button
+    onClick={handlePDF}
+    disabled={pdfLoading}
+    style={{
+      width: "100%",
+      background: pdfLoading ? "#0a1628" : "#0D1A35",
+      border: "1px solid #1e3870",
+      color: pdfLoading ? "#304060" : "#90b8e0",
+      borderRadius: 12, padding: "17px 0",
+      fontSize: 16, fontWeight: 700,
+      cursor: pdfLoading ? "not-allowed" : "pointer",
+      transition: "all 0.2s",
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+    }}
+    onMouseEnter={e => { if (!pdfLoading) { e.currentTarget.style.borderColor = "#00D4B150"; e.currentTarget.style.color = "#00D4B1"; }}}
+    onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e3870"; e.currentTarget.style.color = "#90b8e0"; }}
+  >
+    <span style={{ fontSize: 19 }}>⬇</span>
+    {pdfLoading ? "Generating PDF…" : "Download Scientific Report (PDF)"}
+  </button>
+  <p style={{ textAlign: "center", fontSize: 13, color: "#2a3a58", marginTop: 8 }}>
+    Includes full endpoint analysis, structural notes, and model details
+  </p>
+</div>
             </div>
           )}
         </div>
       </main>
 
-      {/* ── Footer ── */}
-      <footer style={{ borderTop: "1px solid #0f1e38", padding: "24px 32px", textAlign: "center", fontSize: 12, color: "#2a3a58" }}>
-        Tox21 Bench · Random Forest classifiers trained on the Tox21 Challenge dataset · For research use only
-      </footer>
+     {/* ── Footer ── */}
+<footer style={{ borderTop: "1px solid #1a2a4a", padding: "32px 32px", textAlign: "center", fontSize: 14, color: "#5a7898" }}>
+  Tox21 Bench · Random Forest classifiers trained on the Tox21 Challenge dataset 
+</footer>
     </div>
   );
 }

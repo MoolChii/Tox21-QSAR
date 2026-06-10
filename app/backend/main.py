@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
-from rdkit.Chem.Draw import rdMolDraw2D
+from rdkit.Chem.Draw import rdMolDraw2D # type: ignore
 
 # ---------------------------------------------------------------------------
 # Config

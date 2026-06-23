@@ -2,8 +2,7 @@ import { useState, useRef } from "react";
 import jsPDF from "jspdf";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const API_BASE = "http://localhost:8000";
-
+const API_URL = "https://MoolChii-tox21-bench-api.hf.space";
 const TARGET_INFO = {
   "NR-AR":       { label: "Androgen Receptor",           system: "Nuclear Receptor", desc: "Modulates male hormone signaling. Disruption linked to reproductive toxicity and endocrine disorders." },
   "NR-AR-LBD":   { label: "AR Ligand Binding Domain",    system: "Nuclear Receptor", desc: "The specific binding pocket of the androgen receptor. Key site for endocrine-disrupting chemicals." },
